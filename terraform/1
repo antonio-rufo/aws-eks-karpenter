@@ -1,0 +1,41 @@
+# # Please edit the object below. Lines beginning with a '#' will be ignored,
+# # and an empty file will abort the edit. If an error occurs while saving this file will be
+# # reopened with the relevant failures.
+# #
+# # ingresses.networking.k8s.io "istio-ingress-alb" was not valid:
+# # * <nil>: Invalid value: "The edited file failed validation": yaml: line 21: mapping values are not allowed in this context
+# #
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   annotations:
+#     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+#     alb.ingress.kubernetes.io/scheme: internet-facing
+#     alb.ingress.kubernetes.io/target-type: instance
+#     kubectl.kubernetes.io/last-applied-configuration: |
+#       {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"alb.ingress.kubernetes.io/listen-ports":"[{\"HTTP\":80}]","alb.ingress.kubernetes.io/scheme":"internet-facing","alb.ingress.kubernetes.io/target-type":"instance","kubernetes.io/ingress.class":"alb"},"name":"istio-ingress-alb","namespace":"istio-system"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"istio-ingressgateway","port":{"number":80}}},"path":"/*","pathType":"ImplementationSpecific"}]}}]}}
+#     kubernetes.io/ingress.class: alb
+#   creationTimestamp: "2025-04-20T10:07:39Z"
+#   finalizers:
+#   - ingress.k8s.aws/resources
+#   generation: 1
+#   name: istio-ingress-alb
+#   namespace: istio-system
+#   resourceVersion: "714408"
+#   uid: 3ccbefb2-5fa0-4f46-a4dd-8a3bf1ebe6d7
+# spec:
+#   rules
+#   - host: 'k8s-istiosys-istioing-a9e6c1f040-2072384510.us-east-2.elb.amazonaws.com'
+#     http:
+#       paths:
+#       - backend:
+#           service:
+#             name: istio-ingressgateway
+#             port:
+#               number: 80
+#         path: /*
+#         pathType: ImplementationSpecific
+# status:
+#   loadBalancer:
+#     ingress:
+#     - hostname: k8s-istiosys-istioing-a9e6c1f040-2072384510.us-east-2.elb.amazonaws.com

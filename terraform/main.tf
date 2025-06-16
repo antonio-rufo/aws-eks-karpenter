@@ -11,6 +11,7 @@ provider "aws" {
     alias  = "virginia"
 }
 
+
 provider "helm" {
   kubernetes {
     host                   = module.eks.cluster_endpoint
@@ -21,9 +22,14 @@ provider "helm" {
       command     = "aws"
       # This requires the awscli to be installed locally where Terraform is executed
       args = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
-    }
+   }
+
+   
   }
 }
+
+
+
 
 provider "kubectl" {
   apply_retry_count      = 5
@@ -39,10 +45,12 @@ provider "kubectl" {
   }
 }
 
+
+
 terraform {
   backend "s3" {
-    bucket = "XXXXXXXXXXXX-bucket-state-file-karpenter"
-    region = "ap-southeast-2"
+    bucket = "570282481953-bucket-state-file-karpenter"
+    region = "us-east-1"
     key    = "karpenter.tfstate"
   }
 
@@ -55,20 +63,26 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
-  }
+  
+   }
+
 }
 
 ###############################################################################
 # Data Sources
 ###############################################################################
+
 data "aws_ecrpublic_authorization_token" "token" {
-  provider = aws.virginia
+   count = var.enable_cluster_lookup ? 1 : 0
+   provider = aws.virginia     #only in virgina
 }
+
 
 ###############################################################################
 # VPC
 ###############################################################################
 module "vpc" {
+
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.13.0"
 
@@ -99,6 +113,8 @@ module "vpc" {
 # EKS
 ###############################################################################
 module "eks" {
+
+  #depends_on = [module.vpc]  
   source  = "terraform-aws-modules/eks/aws"
   version = "20.24.0"
 
@@ -118,11 +134,13 @@ module "eks" {
   subnet_ids               = module.vpc.private_subnets
   control_plane_subnet_ids = module.vpc.intra_subnets
 
+ 
+
   eks_managed_node_groups = {
     karpenter = {
       # Starting on 1.30, AL2023 is the default AMI type for EKS managed node groups
       ami_type       = "AL2023_x86_64_STANDARD"
-      instance_types = ["m5.large"]
+      instance_types = ["t3.large"]
 
       min_size     = 2
       max_size     = 10
@@ -135,8 +153,9 @@ module "eks" {
           key    = "CriticalAddonsOnly"
           value  = "true"
           effect = "NO_SCHEDULE"
-        },
+        }
       }
+
     }
   }
 
@@ -155,7 +174,10 @@ module "eks" {
 ###############################################################################
 # Karpenter
 ###############################################################################
+
 module "karpenter" {
+ 
+  depends_on = [module.eks]
   source = "terraform-aws-modules/eks/aws//modules/karpenter"
 
   cluster_name = module.eks.cluster_name
@@ -171,15 +193,19 @@ module "karpenter" {
   }
 }
 
+
 ###############################################################################
 # Karpenter Helm
 ###############################################################################
 resource "helm_release" "karpenter" {
+  
+  depends_on = [module.karpenter]
+  
   namespace           = "kube-system"
   name                = "karpenter"
   repository          = "oci://public.ecr.aws/karpenter"
-  repository_username = data.aws_ecrpublic_authorization_token.token.user_name
-  repository_password = data.aws_ecrpublic_authorization_token.token.password
+  repository_username = data.aws_ecrpublic_authorization_token.token[0].user_name
+  repository_password = data.aws_ecrpublic_authorization_token.token[0].password
   chart               = "karpenter"
   version             = "1.0.0"
   wait                = false
@@ -195,6 +221,7 @@ resource "helm_release" "karpenter" {
     EOT
   ]
 }
+
 
 ###############################################################################
 # Karpenter Kubectl
@@ -213,7 +240,7 @@ resource "kubectl_manifest" "karpenter_node_pool" {
           requirements:
             - key: "karpenter.k8s.aws/instance-category"
               operator: In
-              values: ["c", "m", "r"]
+              values: ["t"]
             - key: "karpenter.k8s.aws/instance-cpu"
               operator: In
               values: ["4", "8", "16", "32"]
@@ -291,3 +318,89 @@ resource "kubectl_manifest" "karpenter_example_deployment" {
     helm_release.karpenter
   ]
 }
+
+
+#comment it out when you feel you need new eks cluster in new region
+
+# module "istio" {
+
+#   #depends_on = [module.eks]
+
+#   source                 = "./modules/istio/terraform-aws-eks-istio" # Path to your module directory
+#   cluster_name           =  "istio-eks-cluster"  # Change to your EKS cluster name
+#   namespace              = "istio-system"
+#   helm_chart_repo        = "https://istio-release.storage.googleapis.com/charts"
+#   helm_chart_version     = "1.25.1" # Change as needed
+#   enabled                = true
+#   base_enabled           = true
+#   istiod_enabled         = true
+#   ingressgateway_enabled = true
+
+#   base_settings = {} # Add any required Istio base setting
+
+#  istiod_settings = {} # Add any Istiod settings#
+
+#   ingressgateway_settings = [
+#     {
+#       name     = "istio-ingressgateway"
+#       settings = {} # Add Ingress Gateway settings if needed
+#     }
+#   ]
+
+# }
+
+
+resource "aws_security_group_rule" "allow_istiod_port" {
+  type              = "ingress"
+  from_port         = 15017
+  to_port           = 15017
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = module.eks.node_security_group_id
+  description       = "Allow Istiod port 15017 from anywhere"
+}
+
+resource "aws_security_group_rule" "allow_istio_ports" {
+  type              = "ingress"
+  from_port         = 9080
+  to_port           = 9080
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = module.eks.node_security_group_id
+  description       = "Allow application traffic on port 9080"
+}
+
+resource "aws_security_group_rule" "allow_istio_health_check" {
+  type              = "ingress"
+  from_port         = 15021
+  to_port           = 15021
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = module.eks.node_security_group_id
+  description       = "Allow Istio health checks on port 15021"
+}
+
+
+resource "aws_security_group_rule" "allow_kiali_dashboard" {
+  type              = "ingress"
+  from_port         = 20001
+  to_port           = 20001
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = module.eks.node_security_group_id
+  description       = "Allow Kiali dashboard access on port 20001"
+}
+
+# module "aws_load_balancer_controller" {
+
+#   #depends_on = [module.eks]
+
+#   source                = "./modules/aws_load_balancer_controller"
+#   cluster_name          = var.cluster_name
+#   region                = var.region
+#   enable_cluster_lookup = true
+# }
+
+
+
+
